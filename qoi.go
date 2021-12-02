@@ -328,16 +328,15 @@ func Encode(w io.Writer, img image.Image) error {
 						}
 					}
 
-					err = binary.Write(&buf, binary.BigEndian, [Padding]byte{})
-					if err != nil {
-						return err
-					}
-
 				}
 			}
 			prev = pix
 		}
+	}
 
+	err = binary.Write(&buf, binary.BigEndian, [Padding]byte{})
+	if err != nil {
+		return err
 	}
 	_, err = io.Copy(w, &buf)
 	if err != nil {
