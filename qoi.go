@@ -303,17 +303,20 @@ func Encode(w io.Writer, img image.Image) error {
 					} else {
 						var r, g, b, a byte
 						bs := []byte{0}
-						switch {
-						case Δr != 0:
-							r = 8
+						log.Println("color changed:", Δr, Δg, Δb, Δa)
+						if Δr != 0 {
+							r = 8 // use bitmask type instead
 							bs = append(bs, pix.R)
-						case Δg != 0:
+						}
+						if Δg != 0 {
 							g = 4
 							bs = append(bs, pix.G)
-						case Δb != 0:
+						}
+						if Δb != 0 {
 							b = 2
 							bs = append(bs, pix.B)
-						case Δa != 0:
+						}
+						if Δa != 0 {
 							a = 1
 							bs = append(bs, pix.A)
 						}
