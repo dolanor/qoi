@@ -234,7 +234,11 @@ func Encode(w io.Writer, img image.Image) error {
 					}
 				} else {
 					run -= 33
-					err = binary.Write(&buf, binary.BigEndian, byte(int(Run16)|run>>8))
+					b := []byte{
+						byte(int(Run16) | run>>8),
+						byte(run),
+					}
+					err = binary.Write(&buf, binary.BigEndian, b)
 					if err != nil {
 						return fmt.Errorf("encode: run >= 33: %w", err)
 					}
