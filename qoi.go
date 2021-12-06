@@ -1,8 +1,6 @@
 package qoi
 
 import (
-	"bufio"
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -191,7 +189,7 @@ func Encode(w io.Writer, img image.Image) error {
 		Magic:      *m,
 		Width:      maxX - minX,
 		Height:     maxY - minY,
-		Channels:   3,              // FIXME: how do I get that from an image.Image?
+		Channels:   4,              // FIXME: how do I get that from an image.Image?
 		ColorSpace: ColorSpaceSRGB, // FIXME: how do I get that from an image.Image?
 	}
 
