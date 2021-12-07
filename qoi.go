@@ -7,7 +7,6 @@ import (
 	"image"
 	"image/color"
 	"io"
-	"log"
 )
 
 const Magic = "qoif"
@@ -78,9 +77,9 @@ func Decode(r io.Reader) (image.Image, error) {
 
 	pixels := img.Pix
 
-	pix := color.RGBA{A: 255}
+	pix := color.NRGBA{A: 255}
 	const initPos = (0 ^ 0 ^ 0 ^ 255) % 64 // can't use colorHash here because of const
-	seen := [64]color.RGBA{{}}
+	seen := [64]color.NRGBA{{}}
 	_ = seen
 
 	for len(pixels) > 0 {
@@ -159,7 +158,7 @@ func Decode(r io.Reader) (image.Image, error) {
 					pix.A = b2
 				}
 			default:
-				pix = color.RGBA{}
+				pix = color.NRGBA{}
 			}
 			seen[colorHash(pix)%64] = pix
 		}
@@ -175,49 +174,55 @@ func Decode(r io.Reader) (image.Image, error) {
 }
 
 func Encode(w io.Writer, img image.Image) error {
-	minX := uint32(img.Bounds().Min.X)
-	maxX := uint32(img.Bounds().Max.X)
-	minY := uint32(img.Bounds().Min.Y)
-	maxY := uint32(img.Bounds().Max.Y)
+	minX := img.Bounds().Min.X
+	maxX := img.Bounds().Max.X
+	minY := img.Bounds().Min.Y
+	maxY := img.Bounds().Max.Y
 
-	//buf := bufio.NewWriter(w)
-	var buf bytes.Buffer
+	buf := w
 
 	// convert to static array
 	m := (*[4]byte)([]byte(Magic))
 	h := header{
 		Magic:      *m,
-		Width:      maxX - minX,
-		Height:     maxY - minY,
+		Width:      uint32(maxX - minX),
+		Height:     uint32(maxY - minY),
 		Channels:   4,              // FIXME: how do I get that from an image.Image?
 		ColorSpace: ColorSpaceSRGB, // FIXME: how do I get that from an image.Image?
 	}
 
-	err := binary.Write(&buf, binary.BigEndian, h)
+	err := binary.Write(buf, binary.BigEndian, h)
 	if err != nil {
 		return err
 	}
-	log.Println(minX, maxX, minY, maxY)
-	log.Printf("heyho: %+v\n%+v\n", h, buf.Bytes())
 
-	//img := image.NewNRGBA(image.Rect(0, 0, int(h.Width), int(h.Height)))
 	run := 0
 
-	pix := color.RGBA{A: 255}
+	pix := color.NRGBA{A: 255}
 	prev := pix
 	const initPos = (0 ^ 0 ^ 0 ^ 255) % 64 // can't use colorHash here because of const
-	seen := [64]color.RGBA{{}}
-	_ = seen
+	seen := [64]color.NRGBA{}
+
+	nb := 0
 
 	for y := minY; y < maxY; y++ {
 		for x := minX; x < maxX; x++ {
-			r, g, b, a := img.At(int(x), int(y)).RGBA()
-			pix = color.RGBA{
-				R: uint8(r),
-				G: uint8(g),
-				B: uint8(b),
-				A: uint8(a),
+			px := img.At(x, y)
+
+			switch c := px.(type) {
+			case color.RGBA:
+				pix = color.NRGBA{
+					R: c.R,
+					G: c.G,
+					B: c.B,
+					A: c.A,
+				}
+			case color.NRGBA:
+				pix = c
+			default:
+				return fmt.Errorf("pixel color is not handled: %T", px)
 			}
+
 			if pix == prev {
 				run++
 			}
@@ -226,7 +231,7 @@ func Encode(w io.Writer, img image.Image) error {
 			if run > 0 && (run == 0x2020 || pix != prev || lastPx) {
 				if run < 33 {
 					run--
-					err = binary.Write(&buf, binary.BigEndian, byte(int(Run8)|run))
+					err = binary.Write(buf, binary.BigEndian, byte(int(Run8)|run))
 					if err != nil {
 						return fmt.Errorf("encode: run < 33: %w", err)
 					}
@@ -236,7 +241,7 @@ func Encode(w io.Writer, img image.Image) error {
 						byte(int(Run16) | run>>8),
 						byte(run),
 					}
-					err = binary.Write(&buf, binary.BigEndian, b)
+					err = binary.Write(buf, binary.BigEndian, b)
 					if err != nil {
 						return fmt.Errorf("encode: run >= 33: %w", err)
 					}
@@ -248,7 +253,7 @@ func Encode(w io.Writer, img image.Image) error {
 			if pix != prev {
 				pos := colorHash(pix) % 64
 				if seen[pos] == pix {
-					err = binary.Write(&buf, binary.BigEndian, uint8(Index)|pos)
+					err = binary.Write(buf, binary.BigEndian, byte(Index)|byte(pos))
 					if err != nil {
 						return err
 					}
@@ -272,7 +277,12 @@ func Encode(w io.Writer, img image.Image) error {
 							Δr > -3 && Δr < 2 &&
 							Δg > -3 && Δg < 2 &&
 							Δb > -3 && Δb < 2 {
-							err = binary.Write(&buf, binary.BigEndian, uint8(int(Diff8)|((Δr+2)<<4|(Δg+2)<<2|(Δb+2))))
+							val := byte(Diff8) | byte(Δr+2)<<4 | byte(Δg+2)<<2 | byte(Δb+2)
+							if nb < 10 {
+								nb++
+							}
+
+							err = binary.Write(buf, binary.BigEndian, val)
 							if err != nil {
 								return err
 							}
@@ -282,21 +292,20 @@ func Encode(w io.Writer, img image.Image) error {
 							Δg > -9 && Δg < 8 &&
 							Δb > -9 && Δb < 8 {
 							b := []byte{
-								byte(int(Diff16) | Δr + 16),
-								byte((Δg+8)<<4 | Δb + 8),
+								byte(Diff16) | byte(Δr+16),
+								byte(Δg+8)<<4 | byte(Δb+8),
 							}
-
-							err = binary.Write(&buf, binary.BigEndian, b)
+							err = binary.Write(buf, binary.BigEndian, b)
 							if err != nil {
 								return err
 							}
 						} else {
 							b := []byte{
-								byte(int(Diff24) | Δr + 16>>1),
-								byte((Δr+16)<<7 | (Δg+16)<<2 | (Δb+16)>>3),
-								byte((Δb+16)<<5 | Δa + 16),
+								byte(Diff24) | byte(Δr+16)>>1,
+								byte(Δr+16)<<7 | byte(Δg+16)<<2 | byte(Δb+16)>>3,
+								byte(Δb+16)<<5 | byte(Δa+16),
 							}
-							err = binary.Write(&buf, binary.BigEndian, b)
+							err = binary.Write(buf, binary.BigEndian, b)
 							if err != nil {
 								return err
 							}
@@ -305,7 +314,6 @@ func Encode(w io.Writer, img image.Image) error {
 					} else {
 						var r, g, b, a byte
 						bs := []byte{0}
-						log.Println("color changed:", Δr, Δg, Δb, Δa)
 						if Δr != 0 {
 							r = 8 // use bitmask type instead
 							bs = append(bs, pix.R)
@@ -324,7 +332,7 @@ func Encode(w io.Writer, img image.Image) error {
 						}
 						bs[0] = byte(Color) | r | g | b | a
 
-						err = binary.Write(&buf, binary.BigEndian, bs)
+						err = binary.Write(buf, binary.BigEndian, bs)
 						if err != nil {
 							return err
 						}
@@ -336,11 +344,7 @@ func Encode(w io.Writer, img image.Image) error {
 		}
 	}
 
-	err = binary.Write(&buf, binary.BigEndian, [Padding]byte{})
-	if err != nil {
-		return err
-	}
-	_, err = io.Copy(w, &buf)
+	err = binary.Write(buf, binary.BigEndian, [Padding]byte{})
 	if err != nil {
 		return err
 	}
@@ -348,8 +352,8 @@ func Encode(w io.Writer, img image.Image) error {
 	return nil
 }
 
-func colorHash(c color.Color) uint8 {
-	r, g, b, a := c.RGBA()
+func colorHash(c color.NRGBA) uint8 {
+	r, g, b, a := c.R, c.G, c.B, c.A
 	return uint8(r ^ g ^ b ^ a)
 }
 
@@ -358,5 +362,6 @@ func init() {
 }
 
 func DecodeConfig(r io.Reader) (image.Config, error) {
+	// TODO: figure out how to retrieve channels + other data
 	return image.Config{}, fmt.Errorf("not implemented")
 }
