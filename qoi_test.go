@@ -79,7 +79,7 @@ func TestFull(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	err = qoi.Encode(&buf, img)
+	err = qoi.Encode(&buf, img, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -152,20 +152,17 @@ func TestSmall(t *testing.T) {
 	}
 }
 
+var update = flag.Bool("update", false, "update golden files")
 
-type PanicDiffWriter struct {
+type DiffPanicWriter struct {
 	pos    int
 	golden []byte
 	out    io.Writer
 	t      *testing.T
 }
 
-func (w *PanicDiffWriter) Write(b []byte) (int, error) {
+func (w *DiffPanicWriter) Write(b []byte) (int, error) {
 	w.t.Helper()
-	sz := len(b)
-	if len(w.golden) < sz {
-		sz = len(w.golden)
-	}
 	for i := 0; i < len(b); i++ {
 		if w.golden[w.pos] != b[i] {
 			panic(fmt.Sprintf("tested data different than golden data: pos=%d: \n%x != %x", w.pos, w.golden[w.pos], b[i]))
@@ -184,15 +181,15 @@ func (w *PanicDiffWriter) Write(b []byte) (int, error) {
 	return len(b), nil
 }
 
-var update = flag.Bool("update", false, "update golden files")
-
 func TestEncodeGolden(t *testing.T) {
 	cases := map[string]struct {
-		in     string
-		golden string
+		in      string
+		golden  string
+		options *qoi.Options
 	}{
-		"rgb 30x2": {"rgb.30x2.ori.png", "rgb.30x2.ori.qoi"},
-		"firefox":  {"firefox.ori.png", "firefox.ori.qoi"},
+		"rgb 30x2": {"rgb.30x2.ori.png", "rgb.30x2.qoi", nil},
+		"firefox":  {"firefox.ori.png", "firefox.ori.qoi", nil},
+		"zero":     {"zero.ori.png", "zero.ori.qoi", &qoi.Options{Channels: 4, ColorSpace: qoi.ColorSpaceSRGBLinearAlpha}},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -212,8 +209,8 @@ func TestEncodeGolden(t *testing.T) {
 			}
 
 			var gott bytes.Buffer
-			got := PanicDiffWriter{golden: []byte(want), out: &gott, t: t}
-			err = qoi.Encode(&got, img)
+			got := DiffPanicWriter{golden: []byte(want), out: &gott, t: t}
+			err = qoi.Encode(&got, img, c.options)
 			if err != nil {
 				t.Fatal(err)
 			}

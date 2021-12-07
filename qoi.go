@@ -173,13 +173,24 @@ func Decode(r io.Reader) (image.Image, error) {
 	return img, nil
 }
 
-func Encode(w io.Writer, img image.Image) error {
+type Options struct {
+	Channels   uint8
+	ColorSpace ColorSpace
+}
+
+func Encode(w io.Writer, img image.Image, o *Options) error {
 	minX := img.Bounds().Min.X
 	maxX := img.Bounds().Max.X
 	minY := img.Bounds().Min.Y
 	maxY := img.Bounds().Max.Y
 
 	buf := w
+	if o == nil {
+		o = &Options{
+			Channels:   4,
+			ColorSpace: ColorSpaceSRGB,
+		}
+	}
 
 	// convert to static array
 	m := (*[4]byte)([]byte(Magic))
@@ -187,8 +198,8 @@ func Encode(w io.Writer, img image.Image) error {
 		Magic:      *m,
 		Width:      uint32(maxX - minX),
 		Height:     uint32(maxY - minY),
-		Channels:   4,              // FIXME: how do I get that from an image.Image?
-		ColorSpace: ColorSpaceSRGB, // FIXME: how do I get that from an image.Image?
+		Channels:   o.Channels,
+		ColorSpace: uint8(o.ColorSpace),
 	}
 
 	err := binary.Write(buf, binary.BigEndian, h)
