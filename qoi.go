@@ -352,3 +352,11 @@ func colorHash(c color.Color) uint8 {
 	r, g, b, a := c.RGBA()
 	return uint8(r ^ g ^ b ^ a)
 }
+
+func init() {
+	image.RegisterFormat("qoi", Magic, Decode, DecodeConfig)
+}
+
+func DecodeConfig(r io.Reader) (image.Config, error) {
+	return image.Config{}, fmt.Errorf("not implemented")
+}
