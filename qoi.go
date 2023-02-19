@@ -1,6 +1,7 @@
 package qoi
 
 import (
+	"bufio"
 	"encoding/binary"
 	"errors"
 	"fmt"

@@ -15,7 +15,6 @@ import (
 
 	"github.com/dolanor/qoi"
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/image/bmp"
 )
 
 func TestConst(t *testing.T) {
